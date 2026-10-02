@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hospital Psiquiátrico Abandonado</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Creepster&family=Share+Tech+Mono&family=Inter:wght@300;400;700&display=swap');
+
+        :root {
+            --flashlight-color: rgba(255, 230, 150, 0.45);
+            --flashlight-radius: 380px;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #030303;
+            color: #d1d5db;
+            overflow-x: hidden;
+            user-select: none;
+        }
+
+        .font-creepster { font-family: 'Creepster', cursive; }
+        .font-mono-tech { font-family: 'Share Tech Mono', monospace; }
+
+        @keyframes flicker {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
+            52% { opacity: 0.85; }
+            54% { opacity: 0.15; }
+            80% { opacity: 0.75; }
+        }
+
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: inset 0 0 15px rgba(220, 38, 38, 0.25); }
+            50% { box-shadow: inset 0 0 35px rgba(220, 38, 38, 0.65); }
+        }
+
+        .flicker-effect { animation: flicker 4s infinite; }
+        .alarm-border { animation: pulse-red 2s infinite; }
+
+        #game-canvas-container {
+            position: relative;
+            background-color: #000;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.9), 0 0 15px rgba(220, 38, 38, 0.2);
+        }
+
+        .darkness-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: radial-gradient(
+                circle var(--flashlight-radius) at var(--light-x, 50%) var(--light-y, 50%),
+                var(--flashlight-color) 0%,
+                rgba(0, 0, 0, 0.88) 60%,
+                rgba(0, 0, 0, 0.99) 100%
+            );
+            transition: background 0.03s ease-out;
+        }
+
+        .scanlines {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.3) 50%);
+            background-size: 100% 4px;
+            z-index: 10;
+            opacity: 0.6;
+        }
+
+        #game-over-screen {
+            background: radial-gradient(circle, rgba(45, 0, 0, 0.96) 0%, rgba(5, 0, 0, 0.99) 100%);
+        }
+
+        .dpad-btn {
+            background: rgba(31, 41, 55, 0.8);
+            border: 1px solid rgba(75, 85, 99, 0.5);
+            touch-action: manipulation;
+        }
+        .dpad-btn:active { background: rgba(220, 38, 38, 0.6); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-2 md:p-6 bg-neutral-950 text-gray-200">
+
+    <header class="max-w-6xl mx-auto w-full mb-3 flex flex-col md:flex-row justify-between items-center border-b border-red-900/40 pb-3 gap-3">
+        <div class="flex items-center gap-3">
+            <i class="fa-solid fa-hospital-user text-red-600 text-3xl flicker-effect"></i>
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold tracking-wider font-creepster text-red-600 drop-shadow-[0_2px_10px_rgba(220,38,38,0.5)]">
+                    HOSPITAL PSIQUIÁTRICO ABANDONADO
+                </h1>
+                <p class="text-xs text-gray-400 font-mono-tech">SISTEMA ANTI-ATASCO • RUTAS FLUIDAS • SOBREVIVE 10 MINUTOS</p>
+            </div>
+        </div>
+
+        <div id="weather-widget" class="bg-neutral-900/80 border border-neutral-800 rounded-lg px-3 py-1.5 text-xs flex items-center gap-2 font-mono-tech text-gray-300">
+            <i class="fa-solid fa-cloud-moon text-indigo-400 animate-pulse"></i>
+            <span id="weather-text">Obteniendo clima real...</span>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-4 gap-4 items-start flex-grow">
+        
+        <!-- SECCIÓN PRINCIPAL DE JUEGO Y DASHBOARD FUERA DEL CANVAS -->
+        <section class="lg:col-span-3 flex flex-col gap-3">
+            
+            <!-- PANEL SUPERIOR FUERA DEL CANVAS -->
+            <div class="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono-tech shadow-md">
+                <div class="flex items-center gap-2">
+                    <span class="text-red-500 font-bold"><i class="fa-solid fa-user mr-1"></i>SUJETO:</span>
+                    <span id="hud-player-name" class="text-yellow-400 font-bold">Sujeto #09</span>
+                </div>
+                <div class="flex items-center gap-2 border-l border-neutral-800 pl-3">
+                    <span class="text-gray-400"><i class="fa-solid fa-layer-group mr-1"></i>PISO:</span>
+                    <span id="hud-floor" class="text-emerald-400 font-bold">Planta Baja (Piso 0)</span>
+                </div>
+                <div class="flex items-center gap-2 border-l border-neutral-800 pl-3">
+                    <span class="text-gray-400"><i class="fa-solid fa-eye mr-1"></i>ESTADO:</span>
+                    <span id="hud-stealth" class="text-gray-300 font-bold">Visibilidad Normal</span>
+                </div>
+                <div class="flex items-center gap-2 border-l border-neutral-800 pl-3">
+                    <span class="text-gray-400"><i class="fa-solid fa-bolt mr-1"></i>ENERGÍA:</span>
+                    <span id="hud-power" class="text-red-400 font-bold">DESACTIVADA</span>
+                </div>
+                <div class="flex items-center gap-2 border-l border-neutral-800 pl-3">
+                    <span class="text-gray-400"><i class="fa-solid fa-clock mr-1"></i>TIEMPO:</span>
+                    <span id="hud-timer" class="text-yellow-300 font-bold">10:00</span>
+                </div>
+            </div>
+
+            <div id="game-canvas-container" class="w-full aspect-[16/10] relative alarm-border flex items-center justify-center min-h-[380px]">
+                <canvas id="gameCanvas" class="w-full h-full block cursor-crosshair"></canvas>
+                
+                <div id="darkness" class="darkness-overlay"></div>
+                <div class="scanlines"></div>
+
+                <!-- MENU INICIAL -->
+                <div id="start-screen" class="absolute inset-0 z-30 bg-neutral-950/95 flex flex-col items-center justify-center p-6 text-center space-y-5">
+                    <i class="fa-solid fa-biohazard text-6xl text-red-600 animate-bounce"></i>
+                    <h2 class="text-3xl md:text-4xl font-creepster text-red-500 tracking-wide">HOSPITAL PSIQUIÁTRICO ABANDONADO</h2>
+                    <p class="text-sm text-gray-300 max-w-md leading-relaxed font-mono-tech">
+                        Los monstruos patrullan rutas fijas sin atravesar paredes y poseen un <strong class="text-emerald-400">sistema anti-atasco integrado</strong>. Usa las <strong class="text-emerald-400">Zonas Verdes</strong> para ocultarte de ellos.
+                    </p>
+                    
+                    <div class="w-full max-w-xs space-y-3 bg-neutral-900 p-4 rounded-lg border border-neutral-800 text-left">
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1 font-mono-tech">NOMBRE DEL SOBREVIVIENTE:</label>
+                            <input type="text" id="input-player-name" value="Sujeto #09" class="w-full bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm text-yellow-400 focus:outline-none focus:border-red-500 font-mono-tech" maxlength="15">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1 font-mono-tech">COLOR DE LINTERNA:</label>
+                            <select id="input-flashlight-color" class="w-full bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-red-500 font-mono-tech">
+                                <option value="rgba(255, 230, 150, 0.45)">Luz Cálida (Brillante)</option>
+                                <option value="rgba(150, 255, 200, 0.45)">Verde Espectral</option>
+                                <option value="rgba(150, 200, 255, 0.45)">Azul Frafru</option>
+                                <option value="rgba(255, 100, 100, 0.45)">Rojo Sangre</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button id="btn-start-game" class="bg-red-700 hover:bg-red-600 text-white font-bold py-3 px-8 rounded-lg shadow-lg hover:shadow-red-900/50 transition duration-200 text-lg uppercase tracking-wider font-mono-tech cursor-pointer">
+                        <i class="fa-solid fa-play mr-2"></i> Comenzar Escape
+                    </button>
+                </div>
+
+                <!-- GAME OVER -->
+                <div id="game-over-screen" class="absolute inset-0 z-40 flex flex-col items-center justify-center p-6 text-center space-y-5 hidden">
+                    <i class="fa-solid fa-skull text-7xl text-red-600 animate-pulse"></i>
+                    <h2 class="text-5xl font-creepster text-red-600 tracking-wider">TE HA ATRAPADO</h2>
+                    <p id="game-over-reason" class="text-sm text-gray-300 max-w-md font-mono-tech">
+                        El monstruo te ha tocado en el pasillo. Tu intento de escape ha finalizado.
+                    </p>
+                    <button id="btn-restart-game" class="bg-red-800 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg shadow-xl font-mono-tech uppercase cursor-pointer">
+                        <i class="fa-solid fa-rotate-right mr-2"></i> Reiniciar
+                    </button>
+                </div>
+
+                <!-- VICTORIA -->
+                <div id="victory-screen" class="absolute inset-0 z-40 bg-emerald-950/95 flex flex-col items-center justify-center p-6 text-center space-y-5 hidden">
+                    <i class="fa-solid fa-door-open text-7xl text-emerald-400 animate-bounce"></i>
+                    <h2 class="text-4xl font-creepster text-emerald-400 tracking-wider">¡HAS ESCAPADO CON VIDA!</h2>
+                    <p class="text-sm text-gray-200 max-w-md font-mono-tech">
+                        Has superado las patrullas del hospital psiquiátrico y logrado desbloquear la salida principal.
+                    </p>
+                    <div id="victory-time-stats" class="text-xs font-mono-tech text-yellow-300 bg-neutral-900/80 px-4 py-2 rounded border border-emerald-500">
+                        Tiempo empleando: --:--
+                    </div>
+                    <button id="btn-victory-restart" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-8 rounded-lg font-mono-tech uppercase cursor-pointer">
+                        <i class="fa-solid fa-play mr-2"></i> Jugar Otra Vez
+                    </button>
+                </div>
+
+                <!-- MODAL INTERACCIÓN -->
+                <div id="interaction-modal" class="absolute inset-x-6 top-1/2 -translate-y-1/2 z-30 bg-neutral-900/95 border border-red-800/80 rounded-xl p-5 shadow-2xl hidden flex flex-col space-y-4">
+                    <div class="flex justify-between items-center border-b border-neutral-800 pb-2">
+                        <h3 id="modal-title" class="font-bold text-red-500 font-mono-tech text-base">Objeto</h3>
+                        <button id="btn-close-modal" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+                    </div>
+                    
+                    <div id="modal-content" class="text-sm text-gray-300 font-mono-tech space-y-3"></div>
+
+                    <div id="modal-actions" class="flex justify-end gap-2 pt-2">
+                        <button id="btn-modal-ok" class="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-1.5 rounded text-xs font-mono-tech">Cerrar</button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- CONTROLES Y GUÍA RÁPIDA FUERA DEL CANVAS -->
+            <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-2.5 flex flex-wrap items-center justify-between text-xs font-mono-tech text-gray-400">
+                <div><span class="bg-neutral-800 text-white px-1.5 py-0.5 rounded">WASD / Flechas</span> Moverse</div>
+                <div><span class="bg-neutral-800 text-white px-1.5 py-0.5 rounded">Shift</span> Correr</div>
+                <div><span class="bg-neutral-800 text-white px-1.5 py-0.5 rounded">E / Clic</span> Interactuar</div>
+                <div class="text-emerald-400 font-bold"><span class="bg-emerald-950 border border-emerald-500 px-1.5 py-0.5 rounded text-white">Casilla Verde</span> Oculto e Intocable</div>
+            </div>
+
+            <!-- CONTROLES MÓVILES -->
+            <div class="grid grid-cols-3 gap-2 w-48 mx-auto sm:hidden mt-2">
+                <div></div>
+                <button id="btn-dpad-up" class="dpad-btn rounded-lg p-3 text-white text-center"><i class="fa-solid fa-arrow-up"></i></button>
+                <div></div>
+                <button id="btn-dpad-left" class="dpad-btn rounded-lg p-3 text-white text-center"><i class="fa-solid fa-arrow-left"></i></button>
+                <button id="btn-dpad-action" class="dpad-btn bg-red-900/80 rounded-lg p-3 text-yellow-300 text-center font-bold text-xs">E</button>
+                <button id="btn-dpad-right" class="dpad-btn rounded-lg p-3 text-white text-center"><i class="fa-solid fa-arrow-right"></i></button>
+                <div></div>
+                <button id="btn-dpad-down" class="dpad-btn rounded-lg p-3 text-white text-center"><i class="fa-solid fa-arrow-down"></i></button>
+                <div></div>
+            </div>
+
+            <!-- REGISTRO DE EVENTOS -->
+            <div class="bg-neutral-900 border border-neutral-800 rounded-lg p-3 text-xs font-mono-tech h-24 overflow-y-auto space-y-1 shadow-inner" id="game-log">
+                <p class="text-gray-500">&gt; Presiona 'Comenzar Escape' para iniciar la partida.</p>
+            </div>
+
+        </section>
+
+        <!-- BARRA LATERAL / INVENTARIO -->
+        <aside class="space-y-4">
+            
+            <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-4 space-y-4 shadow-lg">
+                <h2 class="text-sm font-bold text-red-500 font-mono-tech uppercase tracking-wider flex items-center justify-between border-b border-neutral-800 pb-2">
+                    <span><i class="fa-solid fa-briefcase mr-2"></i> Inventario</span>
+                </h2>
+
+                <div id="inventory-grid" class="grid grid-cols-3 gap-2">
+                    <div class="inventory-slot bg-neutral-950 border border-neutral-800 rounded-lg h-16 flex items-center justify-center p-1 text-center" data-slot="0">
+                        <span class="text-[10px] text-gray-700 pointer-events-none">Vacío</span>
+                    </div>
+                    <div class="inventory-slot bg-neutral-950 border border-neutral-800 rounded-lg h-16 flex items-center justify-center p-1 text-center" data-slot="1">
+                        <span class="text-[10px] text-gray-700 pointer-events-none">Vacío</span>
+                    </div>
+                    <div class="inventory-slot bg-neutral-950 border border-neutral-800 rounded-lg h-16 flex items-center justify-center p-1 text-center" data-slot="2">
+                        <span class="text-[10px] text-gray-700 pointer-events-none">Vacío</span>
+                    </div>
+                </div>
+
+                <div class="space-y-2 pt-2 border-t border-neutral-800">
+                    <h3 class="text-xs font-bold text-gray-400 font-mono-tech uppercase">Objetivos:</h3>
+                    <ul class="text-xs space-y-1.5 font-mono-tech">
+                        <li id="obj-1" class="flex items-center gap-2 text-gray-500">
+                            <i class="fa-regular fa-circle"></i> <span>1. Tarjeta Médica (PB)</span>
+                        </li>
+                        <li id="obj-2" class="flex items-center gap-2 text-gray-500">
+                            <i class="fa-regular fa-circle"></i> <span>2. Notas de clave (P1)</span>
+                        </li>
+                        <li id="obj-3" class="flex items-center gap-2 text-gray-500">
+                            <i class="fa-regular fa-circle"></i> <span>3. Activar Fusibles (P1)</span>
+                        </li>
+                        <li id="obj-4" class="flex items-center gap-2 text-gray-500">
+                            <i class="fa-regular fa-circle"></i> <span>4. Abrir Salida Principal (PB)</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-4 space-y-2 shadow-lg font-mono-tech">
+                <h3 class="text-xs font-bold text-gray-400 uppercase flex items-center gap-1.5">
+                    <i class="fa-solid fa-trophy text-yellow-500"></i> Mejor Récord
+                </h3>
+                <div id="best-time-display" class="text-xs text-yellow-400 font-bold">
+                    Sin récord registrado.
+                </div>
+            </div>
+
+            <button id="btn-open-github-guide" class="w-full bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-gray-300 rounded-xl p-3 text-xs font-mono-tech flex items-center justify-center gap-2 transition cursor-pointer">
+                <i class="fa-brands fa-github text-lg"></i>
+                <span>Guía para GitHub Pages</span>
+            </button>
+
+        </aside>
+
+    </main>
+
+    <div id="github-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="bg-neutral-900 border border-neutral-700 rounded-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-neutral-800 pb-3">
+                <h3 class="text-lg font-bold text-red-500 font-mono-tech flex items-center gap-2">
+                    <i class="fa-brands fa-github"></i> Despliegue en GitHub Pages
+                </h3>
+                <button id="btn-close-github" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+
+            <div class="text-xs text-gray-300 space-y-3 font-mono-tech leading-relaxed">
+                <p>Instrucciones para desplegar este juego totalmente gratis:</p>
+                <ol class="list-decimal list-inside space-y-2">
+                    <li class="p-2 bg-neutral-950 rounded border border-neutral-800">Crea un repositorio público en <strong class="text-yellow-400">GitHub.com</strong>.</li>
+                    <li class="p-2 bg-neutral-950 rounded border border-neutral-800">Guarda este archivo HTML exactamente con el nombre <code class="text-emerald-400 font-bold">index.html</code>.</li>
+                    <li class="p-2 bg-neutral-950 rounded border border-neutral-800">Sube el archivo al repositorio mediante <em>Add file &rarr; Upload files</em>.</li>
+                    <li class="p-2 bg-neutral-950 rounded border border-neutral-800">Dirígete a <strong>Settings &rarr; Pages</strong>, selecciona la rama <code class="text-white">main</code> y presiona <strong>Save</strong>.</li>
+                </ol>
+            </div>
+
+            <button id="btn-ok-github" class="w-full bg-red-700 hover:bg-red-600 text-white font-bold py-2 rounded text-xs font-mono-tech uppercase">
+                Entendido
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let audioCtx = null;
+        let isGameRunning = false;
+        let gameTimeStart = 0;
+        let remainingSeconds = 600; // 10 Minutos
+        let timerInterval = null;
+
+        let playerName = "Sujeto #09";
+        let flashlightColor = "rgba(255, 230, 150, 0.45)";
+
+        const MAP_WIDTH = 12;
+        const MAP_HEIGHT = 10;
+        let tileSize = 40;
+
+        let currentFloor = 0; // 0 = Planta Baja, 1 = Primer Piso
+
+        // Tile Map: 0=Suelo, 1=Pared, 2=Puerta Cerrada, 3=Tarjeta/Objeto, 4=Escaleras, 5=Zona Verde Escondite, 6=Fusibles
+        const mapFloor0 = [
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 5, 0, 1, 0, 0, 0, 0, 0, 3, 1], // (2,1) Escondite | (10,1) Tarjeta Médica
+            [1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1],
+            [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 5, 1], // (10,3) Escondite
+            [1, 0, 1, 1, 1, 2, 1, 0, 1, 1, 0, 1], // (5,4) Puerta Médica
+            [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            [1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1],
+            [1, 4, 1, 0, 1, 5, 0, 0, 0, 1, 0, 1], // (1,7) Escaleras | (5,7) Escondite
+            [1, 0, 0, 0, 1, 1, 1, 1, 2, 1, 0, 1], // (8,8) Puerta Salida
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        ];
+
+        const mapFloor1 = [
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 3, 0, 0, 1, 0, 5, 0, 0, 0, 3, 1], // (1,1) Nota 1 | (6,1) Escondite | (10,1) Nota 2
+            [1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1],
+            [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1],
+            [1, 5, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1], // (1,4) Escondite
+            [1, 0, 0, 6, 0, 0, 1, 0, 0, 0, 5, 1], // (3,5) Fusibles | (10,5) Escondite
+            [1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1],
+            [1, 4, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1], // (1,7) Escaleras
+            [1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        ];
+
+        let player = {
+            x: 1.5,
+            y: 1.5,
+            radius: 0.32,
+            baseSpeed: 0.075,
+            isHiding: false
+        };
+
+        function createMonster(path) {
+            return {
+                x: path[0].x,
+                y: path[0].y,
+                radius: 0.32,
+                speed: 0.038,
+                patrolPath: path,
+                targetIdx: 0,
+                lastX: path[0].x,
+                lastY: path[0].y,
+                stuckTimer: 0
+            };
+        }
+
+        // Monstruos configurados con waypoints estrictamente sobre casillas de suelo libre (0 y 5)
+        let monsterFloor0 = createMonster([
+            {x: 5.5, y: 5.5}, {x: 3.5, y: 5.5}, {x: 5.5, y: 5.5},
+            {x: 5.5, y: 7.5}, {x: 8.5, y: 7.5}, {x: 8.5, y: 5.5},
+            {x: 10.5, y: 5.5}, {x: 10.5, y: 3.5}, {x: 10.5, y: 1.5},
+            {x: 7.5, y: 1.5}, {x: 5.5, y: 1.5}, {x: 5.5, y: 3.5}
+        ]);
+
+        let monsterFloor1 = createMonster([
+            {x: 5.5, y: 3.5}, {x: 7.5, y: 3.5}, {x: 10.5, y: 3.5},
+            {x: 10.5, y: 1.5}, {x: 7.5, y: 1.5}, {x: 5.5, y: 1.5},
+            {x: 5.5, y: 3.5}, {x: 5.5, y: 5.5}, {x: 3.5, y: 5.5},
+            {x: 1.5, y: 5.5}, {x: 3.5, y: 5.5}, {x: 5.5, y: 5.5}
+        ]);
+
+        const keys = {};
+        const inventory = [null, null, null];
+
+        let generatedCode = String(Math.floor(1000 + Math.random() * 9000));
+        let quests = {
+            hasMedicalCard: false,
+            knowsCode: false,
+            fusesActivated: false,
+            escaped: false
+        };
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            try {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                if (type === 'step') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(65, now);
+                    osc.frequency.exponentialRampToValueAtTime(30, now + 0.08);
+                    gain.gain.setValueAtTime(0.06, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.08);
+                } else if (type === 'item') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(520, now);
+                    osc.frequency.setValueAtTime(880, now + 0.1);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                } else if (type === 'scare') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(120, now);
+                    osc.frequency.linearRampToValueAtTime(480, now + 0.3);
+                    gain.gain.setValueAtTime(0.4, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.5);
+                } else if (type === 'door') {
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(100, now);
+                    osc.frequency.linearRampToValueAtTime(170, now + 0.3);
+                    gain.gain.setValueAtTime(0.12, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.3);
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function fetchExternalWeather() {
+            const weatherText = document.getElementById('weather-text');
+            try {
+                const res = await fetch('https://api.open-meteo.com/v1/forecast?latitude=40.4168&longitude=-3.7038&current_weather=true');
+                if (res.ok) {
+                    const data = await res.json();
+                    const temp = Math.round(data.current_weather.temperature);
+                    weatherText.textContent = `Exterior: Tormenta Nocturna (${temp}°C) - Viento ${data.current_weather.windspeed} km/h`;
+                } else { throw new Error(); }
+            } catch (e) {
+                weatherText.textContent = `Exterior: Noche Fría y Lluviosa`;
+            }
+        }
+
+        function resizeCanvas() {
+            const container = document.getElementById('game-canvas-container');
+            if (!container) return;
+            canvas.width = container.clientWidth || 600;
+            canvas.height = container.clientHeight || 400;
+            tileSize = Math.min(canvas.width / MAP_WIDTH, canvas.height / MAP_HEIGHT);
+        }
+
+        function getMap() {
+            return currentFloor === 0 ? mapFloor0 : mapFloor1;
+        }
+
+        function isWall(tileX, tileY, floorIndex = currentFloor) {
+            const map = floorIndex === 0 ? mapFloor0 : mapFloor1;
+            if (tileY < 0 || tileY >= MAP_HEIGHT || tileX < 0 || tileX >= MAP_WIDTH) return true;
+            return map[tileY][tileX] === 1;
+        }
+
+        function updatePlayer() {
+            let speed = keys['shift'] ? player.baseSpeed * 1.4 : player.baseSpeed;
+            let dx = 0;
+            let dy = 0;
+
+            if (keys['w'] || keys['arrowup']) dy -= speed;
+            if (keys['s'] || keys['arrowdown']) dy += speed;
+            if (keys['a'] || keys['arrowleft']) dx -= speed;
+            if (keys['d'] || keys['arrowright']) dx += speed;
+
+            if (dx !== 0 && dy !== 0) {
+                dx *= 0.7071;
+                dy *= 0.7071;
+            }
+
+            const newX = player.x + dx;
+            const newY = player.y + dy;
+
+            if (!isWall(Math.floor(newX + Math.sign(dx) * player.radius), Math.floor(player.y))) {
+                player.x = newX;
+            }
+            if (!isWall(Math.floor(player.x), Math.floor(newY + Math.sign(dy) * player.radius))) {
+                player.y = newY;
+            }
+
+            // Comprobar casilla verde de escondite (5)
+            const map = getMap();
+            const currentTile = map[Math.floor(player.y)][Math.floor(player.x)];
+            player.isHiding = (currentTile === 5);
+
+            const hudStealth = document.getElementById('hud-stealth');
+            if (player.isHiding) {
+                hudStealth.textContent = "¡OCULTO! (Intocable)";
+                hudStealth.className = "text-emerald-400 font-bold animate-pulse";
+            } else {
+                hudStealth.textContent = "Visibilidad Normal";
+                hudStealth.className = "text-gray-300 font-bold";
+            }
+
+            if ((dx !== 0 || dy !== 0) && Math.random() < 0.08) {
+                playSound('step');
+            }
+        }
+
+        function updateMonster(monster, floorIndex) {
+            const target = monster.patrolPath[monster.targetIdx];
+
+            // Distancia al objetivo
+            const distToTarget = Math.hypot(target.x - monster.x, target.y - monster.y);
+
+            if (distToTarget < 0.1) {
+                monster.x = target.x;
+                monster.y = target.y;
+                monster.targetIdx = (monster.targetIdx + 1) % monster.patrolPath.length;
+                monster.stuckTimer = 0;
+            } else {
+                // Dirección hacia el objetivo
+                const dirX = (target.x - monster.x) / distToTarget;
+                const dirY = (target.y - monster.y) / distToTarget;
+
+                let nextX = monster.x + dirX * monster.speed;
+                let nextY = monster.y + dirY * monster.speed;
+
+                // Colisión estricta con paredes
+                let moved = false;
+                if (!isWall(Math.floor(nextX + Math.sign(dirX) * monster.radius), Math.floor(monster.y), floorIndex)) {
+                    monster.x = nextX;
+                    moved = true;
+                }
+                if (!isWall(Math.floor(monster.x), Math.floor(nextY + Math.sign(dirY) * monster.radius), floorIndex)) {
+                    monster.y = nextY;
+                    moved = true;
+                }
+
+                // Mecanismo Anti-Atasco (Anti-Stuck): Si no hay movimiento suficiente por atasco en esquina
+                const displacement = Math.hypot(monster.x - monster.lastX, monster.y - monster.lastY);
+                if (displacement < 0.005) {
+                    monster.stuckTimer++;
+                    if (monster.stuckTimer > 45) { // ~0.75s sin movimiento
+                        // Forzar salto seguro al waypoint objetivo para corregir el atascamiento
+                        monster.x = target.x;
+                        monster.y = target.y;
+                        monster.targetIdx = (monster.targetIdx + 1) % monster.patrolPath.length;
+                        monster.stuckTimer = 0;
+                    }
+                } else {
+                    monster.stuckTimer = 0;
+                }
+            }
+
+            monster.lastX = monster.x;
+            monster.lastY = monster.y;
+
+            // Daño por contacto si el jugador está en el mismo piso y fuera de zona verde
+            if (currentFloor === floorIndex && !player.isHiding) {
+                const distToPlayer = Math.hypot(player.x - monster.x, player.y - monster.y);
+                if (distToPlayer < (player.radius + monster.radius)) {
+                    triggerGameOver();
+                }
+            }
+        }
+
+        function interactWithWorld() {
+            const tileX = Math.floor(player.x);
+            const tileY = Math.floor(player.y);
+            const map = getMap();
+
+            const checkPoints = [
+                {x: tileX, y: tileY},
+                {x: tileX + 1, y: tileY},
+                {x: tileX - 1, y: tileY},
+                {x: tileX, y: tileY + 1},
+                {x: tileX, y: tileY - 1}
+            ];
+
+            for (let pt of checkPoints) {
+                if (pt.y < 0 || pt.y >= MAP_HEIGHT || pt.x < 0 || pt.x >= MAP_WIDTH) continue;
+                const val = map[pt.y][pt.x];
+
+                // Escaleras
+                if (val === 4) {
+                    currentFloor = currentFloor === 0 ? 1 : 0;
+                    document.getElementById('hud-floor').textContent = currentFloor === 0 ? "Planta Baja (Piso 0)" : "Primer Piso (Piso 1)";
+                    playSound('door');
+                    addLogMessage(`Avanzaste al ${currentFloor === 0 ? "Planta Baja" : "Primer Piso"}.`);
+                    player.x = pt.x + 0.5;
+                    player.y = pt.y + (currentFloor === 0 ? -1 : 1);
+                    return;
+                }
+
+                // Objetos e interacciones
+                if (val === 3) {
+                    if (currentFloor === 0 && pt.x === 10 && pt.y === 1) {
+                        if (!quests.hasMedicalCard) {
+                            quests.hasMedicalCard = true;
+                            addInventoryItem("Tarjeta Médica", "fa-id-card", "text-blue-400");
+                            updateObjective('obj-1', true);
+                            playSound('item');
+                            showModal("Tarjeta Médica Encontrada", "Conseguiste la Tarjeta Médica del hospital. Te permitirá abrir la zona clínica.");
+                            map[pt.y][pt.x] = 0;
+                        }
+                    } else if (currentFloor === 1) {
+                        if (pt.x === 1 && pt.y === 1) {
+                            playSound('item');
+                            showModal("Nota Ensangrentada #1", `Registro: "Los dos primeros números de la clave son <strong class='text-yellow-400 text-lg'>${generatedCode.slice(0, 2)}</strong>..."`);
+                        } else if (pt.x === 10 && pt.y === 1) {
+                            playSound('item');
+                            quests.knowsCode = true;
+                            updateObjective('obj-2', true);
+                            showModal("Nota Ensangrentada #2", `Guardia: "...los últimos dos números para la salida son <strong class='text-yellow-400 text-lg'>${generatedCode.slice(2, 4)}</strong>."`);
+                        }
+                    }
+                    return;
+                }
+
+                if (val === 6 && currentFloor === 1 && pt.x === 3 && pt.y === 5) {
+                    openFuseKeypadModal();
+                    return;
+                }
+
+                // Puertas
+                if (val === 2) {
+                    if (currentFloor === 0 && pt.x === 5 && pt.y === 4) {
+                        if (quests.hasMedicalCard) {
+                            map[pt.y][pt.x] = 0;
+                            playSound('door');
+                            addLogMessage("Acceso concedido con Tarjeta Médica.");
+                        } else {
+                            showModal("Área Clínica Bloqueada", "Requiere una Tarjeta Médica de autorización.");
+                        }
+                    } else if (currentFloor === 0 && pt.x === 8 && pt.y === 8) {
+                        if (!quests.fusesActivated) {
+                            showModal("Salida Desactivada", "No hay suministro de energía eléctrica. Activa la caja de fusibles en el Piso 1.");
+                        } else {
+                            openEscapeCodeModal();
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+
+        function addInventoryItem(name, iconClass, colorClass) {
+            for (let i = 0; i < inventory.length; i++) {
+                if (inventory[i] === null) {
+                    inventory[i] = { name, iconClass, colorClass };
+                    renderInventory();
+                    break;
+                }
+            }
+        }
+
+        function renderInventory() {
+            const slots = document.querySelectorAll('.inventory-slot');
+            slots.forEach((slot, idx) => {
+                const item = inventory[idx];
+                if (item) {
+                    slot.innerHTML = `
+                        <div class="flex flex-col items-center justify-center p-1 w-full h-full text-center">
+                            <i class="fa-solid ${item.iconClass} ${item.colorClass} text-xl"></i>
+                            <span class="text-[9px] text-gray-300 font-mono-tech mt-1 truncate w-full">${item.name}</span>
+                        </div>
+                    `;
+                } else {
+                    slot.innerHTML = `<span class="text-[10px] text-gray-700 pointer-events-none">Vacío</span>`;
+                }
+            });
+        }
+
+        function showModal(title, bodyHTML) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-content').innerHTML = bodyHTML;
+            document.getElementById('modal-actions').innerHTML = `
+                <button onclick="closeModal()" class="bg-red-800 hover:bg-red-700 text-white px-4 py-1.5 rounded text-xs font-mono-tech cursor-pointer">Cerrar</button>
+            `;
+            document.getElementById('interaction-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('interaction-modal').classList.add('hidden');
+        }
+
+        function openFuseKeypadModal() {
+            if (quests.fusesActivated) {
+                showModal("Caja de Fusibles", "Suministro eléctrico activado.");
+                return;
+            }
+
+            document.getElementById('modal-title').textContent = "Caja de Fusibles Principal";
+            document.getElementById('modal-content').innerHTML = `
+                <p>Presiona para reestablecer la energía eléctrica del edificio.</p>
+                <div class="flex justify-center my-3">
+                    <button id="btn-turn-fuses" class="bg-yellow-600 hover:bg-yellow-500 text-black font-bold px-6 py-2 rounded-lg font-mono-tech flex items-center gap-2 cursor-pointer">
+                        <i class="fa-solid fa-bolt"></i> Encender Interruptor General
+                    </button>
+                </div>
+            `;
+            document.getElementById('modal-actions').innerHTML = `
+                <button onclick="closeModal()" class="bg-neutral-800 text-gray-300 px-3 py-1 rounded text-xs cursor-pointer">Cancelar</button>
+            `;
+            document.getElementById('interaction-modal').classList.remove('hidden');
+
+            document.getElementById('btn-turn-fuses').onclick = () => {
+                quests.fusesActivated = true;
+                updateObjective('obj-3', true);
+                document.getElementById('hud-power').textContent = "ACTIVADA";
+                document.getElementById('hud-power').className = "text-emerald-400 font-bold";
+                playSound('door');
+                closeModal();
+                addLogMessage("¡Suministro eléctrico restablecido con éxito!");
+            };
+        }
+
+        function openEscapeCodeModal() {
+            document.getElementById('modal-title').textContent = "Panel Digital de Emergencia";
+            document.getElementById('modal-content').innerHTML = `
+                <p class="text-xs mb-2">Ingresa el código de seguridad de 4 dígitos:</p>
+                <div class="flex justify-center gap-2 my-3">
+                    <input type="text" id="input-code" maxlength="4" class="bg-black border border-red-600 text-center text-2xl tracking-widest text-emerald-400 font-mono-tech rounded w-32 py-1 focus:outline-none" placeholder="****">
+                </div>
+                <div id="code-error" class="text-red-500 text-xs text-center hidden">Código incorrecto.</div>
+            `;
+            document.getElementById('modal-actions').innerHTML = `
+                <button id="btn-submit-code" class="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-1.5 rounded text-xs font-mono-tech cursor-pointer">Desbloquear Salida</button>
+                <button onclick="closeModal()" class="bg-neutral-800 text-gray-300 px-3 py-1 rounded text-xs cursor-pointer">Cancelar</button>
+            `;
+            document.getElementById('interaction-modal').classList.remove('hidden');
+
+            document.getElementById('btn-submit-code').onclick = () => {
+                const entered = document.getElementById('input-code').value;
+                if (entered === generatedCode) {
+                    quests.escaped = true;
+                    updateObjective('obj-4', true);
+                    closeModal();
+                    triggerVictory();
+                } else {
+                    document.getElementById('code-error').classList.remove('hidden');
+                    playSound('scare');
+                }
+            };
+        }
+
+        function updateObjective(id, completed) {
+            const el = document.getElementById(id);
+            if (completed && el) {
+                el.className = "flex items-center gap-2 text-emerald-400 font-bold line-through";
+                el.querySelector('i').className = "fa-solid fa-circle-check text-emerald-400";
+            }
+        }
+
+        function addLogMessage(msg) {
+            const logBox = document.getElementById('game-log');
+            const p = document.createElement('p');
+            p.className = "text-gray-300";
+            p.textContent = `> ${msg}`;
+            logBox.appendChild(p);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function renderMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const map = getMap();
+
+            for (let y = 0; y < MAP_HEIGHT; y++) {
+                for (let x = 0; x < MAP_WIDTH; x++) {
+                    const tile = map[y][x];
+                    const px = x * tileSize;
+                    const py = y * tileSize;
+
+                    if (tile === 1) { // Pared
+                        ctx.fillStyle = '#171717';
+                        ctx.fillRect(px, py, tileSize, tileSize);
+                        ctx.strokeStyle = '#262626';
+                        ctx.strokeRect(px, py, tileSize, tileSize);
+                    } else if (tile === 5) { // ZONA VERDE
+                        ctx.fillStyle = 'rgba(16, 185, 129, 0.28)';
+                        ctx.fillRect(px, py, tileSize, tileSize);
+                        ctx.strokeStyle = '#10b981';
+                        ctx.lineWidth = 1.5;
+                        ctx.strokeRect(px + 2, py + 2, tileSize - 4, tileSize - 4);
+                        
+                        ctx.fillStyle = '#10b981';
+                        ctx.beginPath();
+                        ctx.arc(px + tileSize / 2, py + tileSize / 2, tileSize * 0.15, 0, Math.PI * 2);
+                        ctx.fill();
+                    } else { // Suelo
+                        ctx.fillStyle = (x + y) % 2 === 0 ? '#0a0a0a' : '#111111';
+                        ctx.fillRect(px, py, tileSize, tileSize);
+
+                        if (tile === 2) { // Puerta
+                            ctx.fillStyle = '#991b1b';
+                            ctx.fillRect(px + tileSize * 0.1, py + tileSize * 0.1, tileSize * 0.8, tileSize * 0.8);
+                        } else if (tile === 4) { // Escaleras
+                            ctx.fillStyle = '#0284c7';
+                            ctx.fillRect(px + tileSize * 0.2, py + tileSize * 0.2, tileSize * 0.6, tileSize * 0.6);
+                        } else if (tile === 3) { // Objeto / Nota
+                            ctx.fillStyle = '#f59e0b';
+                            ctx.beginPath();
+                            ctx.arc(px + tileSize / 2, py + tileSize / 2, tileSize * 0.2, 0, Math.PI * 2);
+                            ctx.fill();
+                        } else if (tile === 6) { // Fusibles
+                            ctx.fillStyle = '#eab308';
+                            ctx.fillRect(px + tileSize * 0.25, py + tileSize * 0.25, tileSize * 0.5, tileSize * 0.5);
+                        }
+                    }
+                }
+            }
+
+            // Monstruo de la planta actual
+            const activeMonster = currentFloor === 0 ? monsterFloor0 : monsterFloor1;
+            const mx = activeMonster.x * tileSize;
+            const my = activeMonster.y * tileSize;
+
+            ctx.fillStyle = '#dc2626';
+            ctx.beginPath();
+            ctx.arc(mx, my, activeMonster.radius * tileSize, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Ojos
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(mx - 3, my - 2, 2, 2);
+            ctx.fillRect(mx + 1, my - 2, 2, 2);
+
+            // Jugador
+            const px = player.x * tileSize;
+            const py = player.y * tileSize;
+
+            ctx.fillStyle = player.isHiding ? '#10b981' : '#3b82f6';
+            ctx.beginPath();
+            ctx.arc(px, py, player.radius * tileSize, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = player.isHiding ? '#34d399' : '#93c5fd';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        function gameLoop() {
+            if (!isGameRunning) return;
+
+            updatePlayer();
+            updateMonster(monsterFloor0, 0);
+            updateMonster(monsterFloor1, 1);
+
+            renderMap();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startTimer() {
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (!isGameRunning) return;
+                remainingSeconds--;
+                const mins = String(Math.floor(remainingSeconds / 60)).padStart(2, '0');
+                const secs = String(remainingSeconds % 60).padStart(2, '0');
+                document.getElementById('hud-timer').textContent = `${mins}:${secs}`;
+
+                if (remainingSeconds <= 0) {
+                    triggerGameOver("Se ha agotado el tiempo de 10 minutos. Los suministros cayeron.");
+                }
+            }, 1000);
+        }
+
+        function loadBestRecord() {
+            const best = localStorage.getItem('hospital_best_record');
+            const display = document.getElementById('best-time-display');
+            if (best) {
+                display.textContent = `${best}`;
+            } else {
+                display.textContent = "Sin récord registrado.";
+            }
+        }
+
+        function startGame() {
+            initAudio();
+            playerName = document.getElementById('input-player-name').value || "Sujeto #09";
+            flashlightColor = document.getElementById('input-flashlight-color').value;
+
+            document.getElementById('hud-player-name').textContent = playerName;
+            document.documentElement.style.setProperty('--flashlight-color', flashlightColor);
+
+            document.getElementById('start-screen').classList.add('hidden');
+            isGameRunning = true;
+            gameTimeStart = Date.now();
+
+            startTimer();
+            resizeCanvas();
+            requestAnimationFrame(gameLoop);
+            addLogMessage(`Escape iniciado. Tienes 10 minutos.`);
+        }
+
+        function triggerGameOver(reason) {
+            isGameRunning = false;
+            clearInterval(timerInterval);
+            playSound('scare');
+            if (reason) {
+                document.getElementById('game-over-reason').textContent = reason;
+            }
+            document.getElementById('game-over-screen').classList.remove('hidden');
+        }
+
+        function triggerVictory() {
+            isGameRunning = false;
+            clearInterval(timerInterval);
+            const timeInSecs = Math.floor((Date.now() - gameTimeStart) / 1000);
+            const mins = Math.floor(timeInSecs / 60);
+            const secs = timeInSecs % 60;
+            const timeStr = `${mins}m ${secs}s`;
+
+            document.getElementById('victory-time-stats').textContent = `Jugador: ${playerName} | Tiempo: ${timeStr}`;
+            document.getElementById('victory-screen').classList.remove('hidden');
+            playSound('item');
+
+            const currentBest = localStorage.getItem('hospital_best_record');
+            if (!currentBest || timeInSecs < parseInt(localStorage.getItem('hospital_best_record_sec') || '999999')) {
+                localStorage.setItem('hospital_best_record', `${playerName} - ${timeStr}`);
+                localStorage.setItem('hospital_best_record_sec', timeInSecs);
+                loadBestRecord();
+            }
+        }
+
+        function restartGame() {
+            location.reload();
+        }
+
+        // Event Listeners
+        document.getElementById('btn-start-game').addEventListener('click', startGame);
+        document.getElementById('btn-restart-game').addEventListener('click', restartGame);
+        document.getElementById('btn-victory-restart').addEventListener('click', restartGame);
+        document.getElementById('btn-close-modal').addEventListener('click', closeModal);
+
+        window.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+            if (e.key.toLowerCase() === 'e') {
+                interactWithWorld();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const darkness = document.getElementById('darkness');
+            if (darkness) {
+                darkness.style.setProperty('--light-x', `${(x / rect.width) * 100}%`);
+                darkness.style.setProperty('--light-y', `${(y / rect.height) * 100}%`);
+            }
+        });
+
+        canvas.addEventListener('click', () => {
+            if (isGameRunning) interactWithWorld();
+        });
+
+        // Touch mobile controls
+        document.getElementById('btn-dpad-up').addEventListener('touchstart', (e) => { e.preventDefault(); keys['w'] = true; });
+        document.getElementById('btn-dpad-up').addEventListener('touchend', () => keys['w'] = false);
+        document.getElementById('btn-dpad-down').addEventListener('touchstart', (e) => { e.preventDefault(); keys['s'] = true; });
+        document.getElementById('btn-dpad-down').addEventListener('touchend', () => keys['s'] = false);
+        document.getElementById('btn-dpad-left').addEventListener('touchstart', (e) => { e.preventDefault(); keys['a'] = true; });
+        document.getElementById('btn-dpad-left').addEventListener('touchend', () => keys['a'] = false);
+        document.getElementById('btn-dpad-right').addEventListener('touchstart', (e) => { e.preventDefault(); keys['d'] = true; });
+        document.getElementById('btn-dpad-right').addEventListener('touchend', () => keys['d'] = false);
+        document.getElementById('btn-dpad-action').addEventListener('click', () => interactWithWorld());
+
+        // Modal GitHub
+        document.getElementById('btn-open-github-guide').addEventListener('click', () => {
+            document.getElementById('github-modal').classList.remove('hidden');
+        });
+        document.getElementById('btn-close-github').addEventListener('click', () => {
+            document.getElementById('github-modal').classList.add('hidden');
+        });
+        document.getElementById('btn-ok-github').addEventListener('click', () => {
+            document.getElementById('github-modal').classList.add('hidden');
+        });
+
+        window.onload = () => {
+            fetchExternalWeather();
+            loadBestRecord();
+            resizeCanvas();
+        };
+
+        window.onresize = resizeCanvas;
+    </script>
+</body>
+</html>
